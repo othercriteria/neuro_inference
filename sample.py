@@ -3,8 +3,7 @@
 # Trying to generate samples from the conditional model.
 
 # NOTE: My convention of indexing arrays from 0 does not agree with
-# the convention in Matt's notes. I'm also switching the definition of
-# the lag in the more natural direction, as discussed in meeting.
+# the convention in Matt's notes.
 
 # Daniel Klein, 9/14/2011
 
@@ -13,12 +12,15 @@ from itertools import permutations
 import numpy as np
 from random import random
 
+from utility import log_weighted_sample
+
 # Parameters
-params = {'N': 6,
-          'T': 30,
+params = {'N': 8,
+          'T': 36,
           'L': 4,
           'Delta': 6,
-          'theta_method': ('sparse_unique', {'p': 0.8, 'scale': 2.0}),
+          # 'theta_method': ('sparse_unique', {'p': 0.8, 'scale': 2.0}),
+          'theta_method': ('cascade_2', {'strength': 8.0, 'decay': 0.8}),
           'S_method': ('random_uniform', {'p_min': 0.05, 'p_max': 0.2})}
 if not params['T'] % params['Delta'] == 0:
     print 'Error: T must be a multiple of Delta'
@@ -34,8 +36,12 @@ if method_name == 'sparse_unique':
             j = np.random.randint(0, params['N'])
             l = np.random.randint(0, params['L'])
             theta[i,j,l] = np.random.normal(0, method_params['scale'])
-
+if method_name == 'cascade_2':
+    for i in range(params['N']-1):
+        theta[i,(i+1),1] = method_params['strength']*(method_params['decay']**i)
+   
 # Generate S (calling it "windows" in code)
+print 'Generating window permutations'
 windows = []
 method_name, method_params = params['S_method']
 if method_name == 'random_uniform':
@@ -52,57 +58,53 @@ if method_name == 'random_uniform':
             w_seen.add(w_str)
             window.append(w_perm)
         windows.append(window)
+n_w = map(len, windows)
 
-# Define weighted sampling, with no optimization for repeated use
-def log_weighted_sample(x, log_probs):
-    log_probs = np.array(log_probs)
-    log_probs_scaled = log_probs - np.max(log_probs)
-    probs_unnorm = np.exp(log_probs_scaled)
-    probs = probs_unnorm / np.sum(probs_unnorm)
+# Tabulate log-potential functions: h_1, h_2, ..., h_M (this has the
+# feel of the forward algorithm?)
+print 'Tabulating log-potential functions'
+h = [np.empty(n_w[0])]
+s_padded = np.zeros((params['N'],2*params['Delta']))
+hits = np.zeros((params['N'],params['N'],params['L']))
+for w, s in enumerate(windows[0]):
+    s_padded[:,params['Delta']:(2*params['Delta'])] = s
+    hits[:,:,:] = 0
+    for l in range(params['L']):
+        t_min, t_max = params['Delta'] - (l+1), 2*params['Delta'] - (l+1)
+        s_lagged = s_padded[:,t_min:t_max]
+        hits[:,:,l] = np.tensordot(s_lagged, s, axes = (1,1))
+    h[0][w] = np.sum(theta * hits)
+for k in range(1, params['M']):
+    h.append(np.empty((n_w[k-1], n_w[k])))
+    for w_prev, s_prev in enumerate(windows[k-1]):
+        s_padded[:,0:params['Delta']] = s_prev
+        for w, s in enumerate(windows[k]):
+            s_padded[:,params['Delta']:(2*params['Delta'])] = s
+            hits[:,:,:] = 0
+            for l in range(params['L']):
+                t_min, t_max = params['Delta'] - (l+1), 2*params['Delta'] - (l+1)
+                s_lagged = s_padded[:,t_min:t_max]
+                hits[:,:,l] = np.tensordot(s_lagged, s, axes = (1,1))
+            h[k][w_prev,w] = np.sum(theta * hits)
 
-    r = random()
-    p_cum = 0.0
-    for i, p in enumerate(probs):
-        p_cum += p
-        if r < p_cum: break
-    return x[i]
+# Run the backward algorithm
+print 'Running backward algorithm'
+b = [np.zeros(n_w[params['M']-1])]            
+for k in range(params['M']-1, 0, -1):
+    b = [np.empty(n_w[k-1])] + b
+    for w_prev in range(n_w[k-1]):
+        for w in range(n_w[k]):
+            b[0][w_prev] = np.log(np.sum(np.exp(h[k][w_prev,:] + b[1])))
+b = [None] + b
 
 # Sample (binned) spike trains by sampling permutations of jitter windows
+print 'Sampling'
 x = np.zeros((params['N'], params['T']), dtype=int)
-log_probs = []
-for s in windows[0]:
-    log_prob = 0.0
-    for i in range(params['N']):
-        for j in range(params['N']):
-            for l in range(params['L']):
-                this_theta = theta[i,j,l]
-                hits = 0
-                for t in range(params['Delta']):
-                    t_lagged = t - (l + 1)
-                    if t_lagged < 0: continue
-                    hits += (s[i,t] * s[j,t_lagged])
-                log_prob += this_theta * hits
-    log_probs.append(log_prob)
-x[:,0:params['Delta']] = log_weighted_sample(windows[0], log_probs)
+w_samp = log_weighted_sample(h[0] + b[1])
+x[:,0:params['Delta']] = windows[0][w_samp]
 for k in range(1, params['M']):
-    log_probs = []
-    t_min, t_max = params['Delta']*k, params['Delta']*(k+1)
-    for s in windows[k]:
-        log_prob = 0.0
-        for i in range(params['N']):
-            for j in range(params['N']):
-                for l in range(params['L']):
-                    this_theta = theta[i,j,l]
-                    hits = 0
-                    for t in range(t_min, t_max):
-                        t_lagged = t - (l + 1)
-                        if t_lagged < t_min:
-                            hits += (s[i,t-t_min] * x[j,t_lagged])
-                        else:
-                            hits += (s[i,t-t_min] * s[j,t_lagged-t_min])
-                    log_prob += this_theta * hits
-        log_probs.append(log_prob)
-    x[:,t_min:t_max] = log_weighted_sample(windows[k], log_probs)
+    w_samp = log_weighted_sample(h[k][w_samp,:] + b[k+1])
+    x[:,(k*params['Delta']):((k+1)*params['Delta'])] = windows[k][w_samp]
 
 # Output
 print 'Parameters'
@@ -116,3 +118,7 @@ print
 
 print 'x'
 print x
+print
+
+print 'log_kappa'
+print np.log(np.sum(np.exp(h[0] + b[1])))

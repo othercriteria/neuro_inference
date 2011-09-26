@@ -5,7 +5,7 @@ import numpy as np
 from random import random
 
 # (Log-)weighted sampling, with no optimization for repeated use
-def log_weighted_sample(x, log_probs):
+def log_weighted_sample(log_probs):
     log_probs = np.array(log_probs)
     log_probs_scaled = log_probs - np.max(log_probs)
     probs_unnorm = np.exp(log_probs_scaled)
@@ -16,4 +16,4 @@ def log_weighted_sample(x, log_probs):
     for i, p in enumerate(probs):
         p_cum += p
         if r < p_cum: break
-    return x[i]
+    return i
