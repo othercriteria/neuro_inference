@@ -1,3 +1,5 @@
 Sketching an implementation in Python. Also working on test cases, visualization, analysis, etc.
 
-Requirements: Python with Numpy libraries.
+Performance is not currently optimized.
+
+Requirements: Python with Numpy and Scipy libraries.
