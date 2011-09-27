@@ -10,18 +10,20 @@
 import sys
 from itertools import permutations
 import numpy as np
+from scipy.io import savemat
 from random import random
 
 from utility import log_weighted_sample
 
 # Parameters
-params = {'N': 8,
-          'T': 36,
-          'L': 4,
-          'Delta': 6,
-          # 'theta_method': ('sparse_unique', {'p': 0.8, 'scale': 2.0}),
-          'theta_method': ('cascade_2', {'strength': 8.0, 'decay': 0.8}),
-          'S_method': ('random_uniform', {'p_min': 0.05, 'p_max': 0.2})}
+params = {'N': 2,
+          'T': 5000,
+          'L': 2,
+          'Delta': 4,
+          'theta_method': ('sparse_unique', {'p': 0.8, 'scale': 3.0}),
+          # 'theta_method': ('cascade_2', {'strength': 8.0, 'decay': 0.8}),
+          # 'S_method': ('random_uniform', {'p_min': 0.05, 'p_max': 0.2}),
+          'S_method': ('random_periodic', {'baseline': 0.05, 'scale': 0.02})}
 if not params['T'] % params['Delta'] == 0:
     print 'Error: T must be a multiple of Delta'
     sys.exit()
@@ -39,16 +41,28 @@ if method_name == 'sparse_unique':
 if method_name == 'cascade_2':
     for i in range(params['N']-1):
         theta[i,(i+1),1] = method_params['strength']*(method_params['decay']**i)
+    theta[params['N']-1,0,0] = 0.5 * method_params['strength']
    
 # Generate S (calling it "windows" in code)
 print 'Generating window permutations'
 windows = []
 method_name, method_params = params['S_method']
-if method_name == 'random_uniform':
+if method_name in ['random_uniform', 'random_periodic']:
+    if method_name == 'random_periodic':
+        periods = params['M'] * np.random.normal(1, 1, params['N'])
+        phases = np.random.uniform(0.0, 2.0*np.pi, params['N'])
     for k in range(params['M']):
         window = []
-        p = np.random.uniform(method_params['p_min'], method_params['p_max'])
-        w = np.random.binomial(1, p, (params['N'], params['Delta']))
+        if method_name == 'random_uniform':
+            p = np.random.uniform(method_params['p_min'], method_params['p_max'])
+            w_raw = np.random.binomial(1, p, (params['N'], params['Delta']))
+        if method_name == 'random_periodic':
+            w_raw = np.empty((params['N'], params['Delta']))
+            for i in range(params['N']):
+                p = (method_params['baseline'] +
+                     method_params['scale'] * np.sin(periods[i]*k + phases[i]))
+                w_raw[i,:] = np.random.binomial(1, p, (1, params['Delta']))
+        w = np.array(w_raw, dtype='int8')
         w_seen = set()
         for perm in permutations(range(params['Delta'])):
             w_perm = w[:,np.array(perm)]
@@ -64,8 +78,8 @@ n_w = map(len, windows)
 # feel of the forward algorithm?)
 print 'Tabulating log-potential functions'
 h = [np.empty(n_w[0])]
-s_padded = np.zeros((params['N'],2*params['Delta']))
-hits = np.zeros((params['N'],params['N'],params['L']))
+s_padded = np.zeros((params['N'],2*params['Delta']), dtype='int8')
+hits = np.zeros((params['N'],params['N'],params['L']), dtype='int32')
 for w, s in enumerate(windows[0]):
     s_padded[:,params['Delta']:(2*params['Delta'])] = s
     hits[:,:,:] = 0
@@ -94,17 +108,20 @@ for k in range(params['M']-1, 0, -1):
     b = [np.empty(n_w[k-1])] + b
     for w_prev in range(n_w[k-1]):
         for w in range(n_w[k]):
-            b[0][w_prev] = np.log(np.sum(np.exp(h[k][w_prev,:] + b[1])))
+            b[0][w_prev] = np.logaddexp.reduce(h[k][w_prev,:] + b[1])
 b = [None] + b
 
 # Sample (binned) spike trains by sampling permutations of jitter windows
 print 'Sampling'
-x = np.zeros((params['N'], params['T']), dtype=int)
+x = np.empty((params['N'], params['T']), dtype='int8')
 w_samp = log_weighted_sample(h[0] + b[1])
 x[:,0:params['Delta']] = windows[0][w_samp]
 for k in range(1, params['M']):
     w_samp = log_weighted_sample(h[k][w_samp,:] + b[k+1])
     x[:,(k*params['Delta']):((k+1)*params['Delta'])] = windows[k][w_samp]
+
+# Write sample to file
+savemat('sample.mat', {'theta': theta, 'sample': np.array(x, dtype='float32')})
 
 # Output
 print 'Parameters'
@@ -121,4 +138,4 @@ print x
 print
 
 print 'log_kappa'
-print np.log(np.sum(np.exp(h[0] + b[1])))
+print np.logaddexp.reduce(h[0] + b[1])
