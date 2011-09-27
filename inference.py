@@ -59,7 +59,7 @@ for w, s in enumerate(windows[0]):
     for l in range(params['L']):
         t_min, t_max = params['Delta'] - (l+1), 2*params['Delta'] - (l+1)
         s_lagged = s_padded[:,t_min:t_max]
-        hits[0][:,:,l] = np.tensordot(s_lagged, s, axes = (1,1))
+        hits[0][w,:,:,l] = np.tensordot(s_lagged, s, axes = (1,1))
 for k in range(1, params['M']):
     hits.append(np.empty((n_w[k-1],n_w[k]) + theta_dim, dtype='int32'))
     for w_prev, s_prev in enumerate(windows[k-1]):
