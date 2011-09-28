@@ -6,12 +6,16 @@ from random import random
 from itertools import permutations
 import hashlib
 
+def unlog(log_x):
+    log_x = np.array(log_x)
+    log_x_scaled = log_x - np.max(log_x)
+    x_unnorm = np.exp(log_x_scaled)
+    x = x_unnorm / np.sum(x_unnorm)
+    return x
+
 # (Log-)weighted sampling, with no optimization for repeated use
 def log_weighted_sample(log_probs):
-    log_probs = np.array(log_probs)
-    log_probs_scaled = log_probs - np.max(log_probs)
-    probs_unnorm = np.exp(log_probs_scaled)
-    probs = probs_unnorm / np.sum(probs_unnorm)
+    probs = unlog(log_probs)
 
     r = random()
     p_cum = 0.0
