@@ -6,10 +6,11 @@
 # Daniel Klein, 9/26/2011
 
 import sys
-from itertools import permutations
 import numpy as np
 import scipy.optimize as opt
 from scipy.io import loadmat
+
+from utility import window_permutations
 
 # Parameters
 params = {'input_file': 'sample.mat',
@@ -34,17 +35,8 @@ theta_dim = (params['N'],params['N'],params['L'])
 print 'Generating window permutations'
 windows = []
 for k in range(params['M']):
-    window = []
     w = x[:,(k*params['Delta']):((k+1)*params['Delta'])]
-    w_seen = set()
-    for perm in permutations(range(params['Delta'])):
-        w_perm = w[:,np.array(perm)]
-        w_str = np.array_str(w_perm)
-        if w_str in w_seen:
-            continue
-        w_seen.add(w_str)
-        window.append(w_perm)
-    windows.append(window)
+    windows.append(window_permutations(w))
 n_w = map(len, windows)
 
 # Initialize theta

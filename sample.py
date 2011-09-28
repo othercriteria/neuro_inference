@@ -8,16 +8,15 @@
 # Daniel Klein, 9/14/2011
 
 import sys
-from itertools import permutations
 import numpy as np
 from scipy.io import savemat
 from random import random
 
-from utility import log_weighted_sample
+from utility import log_weighted_sample, window_permutations
 
 # Parameters
-params = {'N': 2,
-          'T': 5000,
+params = {'N': 5,
+          'T': 200,
           'L': 2,
           'Delta': 4,
           'theta_method': ('sparse_unique', {'p': 0.8, 'scale': 3.0}),
@@ -62,23 +61,15 @@ if method_name in ['random_uniform', 'random_periodic']:
                 p = (method_params['baseline'] +
                      method_params['scale'] * np.sin(periods[i]*k + phases[i]))
                 w_raw[i,:] = np.random.binomial(1, p, (1, params['Delta']))
-        w = np.array(w_raw, dtype='int8')
-        w_seen = set()
-        for perm in permutations(range(params['Delta'])):
-            w_perm = w[:,np.array(perm)]
-            w_str = np.array_str(w_perm)
-            if w_str in w_seen:
-                continue
-            w_seen.add(w_str)
-            window.append(w_perm)
-        windows.append(window)
+        w = np.array(w_raw, dtype='uint8')
+        windows.append(window_permutations(w))
 n_w = map(len, windows)
 
 # Tabulate log-potential functions: h_1, h_2, ..., h_M (this has the
 # feel of the forward algorithm?)
 print 'Tabulating log-potential functions'
 h = [np.empty(n_w[0])]
-s_padded = np.zeros((params['N'],2*params['Delta']), dtype='int8')
+s_padded = np.zeros((params['N'],2*params['Delta']), dtype='uint8')
 hits = np.zeros((params['N'],params['N'],params['L']), dtype='int32')
 for w, s in enumerate(windows[0]):
     s_padded[:,params['Delta']:(2*params['Delta'])] = s
@@ -113,7 +104,7 @@ b = [None] + b
 
 # Sample (binned) spike trains by sampling permutations of jitter windows
 print 'Sampling'
-x = np.empty((params['N'], params['T']), dtype='int8')
+x = np.empty((params['N'], params['T']), dtype='uint8')
 w_samp = log_weighted_sample(h[0] + b[1])
 x[:,0:params['Delta']] = windows[0][w_samp]
 for k in range(1, params['M']):
