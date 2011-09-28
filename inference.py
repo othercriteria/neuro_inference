@@ -52,36 +52,41 @@ theta_init = np.zeros(theta_dim)
 
 # Precompute statistics
 print 'Precomputing statistics'
-hits = [np.empty((n_w[0],) + theta_dim, dtype='int32')]
+hits = [[]]
 s_padded = np.zeros((params['N'],2*params['Delta']), dtype='bool')
-for w, s in enumerate(windows[0]):
+for s in windows[0]:
     s_padded[:,params['Delta']:(2*params['Delta'])] = s
+    hit = np.empty(theta_dim, dtype='int32')
     for l in range(params['L']):
-        t_min, t_max = params['Delta'] - (l+1), 2*params['Delta'] - (l+1)
+        t_min, t_max = params['Delta']-(l+1), 2*params['Delta']-(l+1)
         s_lagged = s_padded[:,t_min:t_max]
-        hits[0][w,:,:,l] = np.tensordot(s_lagged, s, axes = (1,1))
+        hit[:,:,l] = np.tensordot(s_lagged, s, axes = (1,1))
+    hits[0].append(hit)
 for k in range(1, params['M']):
-    hits.append(np.empty((n_w[k-1],n_w[k]) + theta_dim, dtype='int32'))
-    for w_prev, s_prev in enumerate(windows[k-1]):
+    hits.append([])
+    for s_prev in windows[k-1]:
+        hits[k].append([])
         s_padded[:,0:params['Delta']] = s_prev
-        for w, s in enumerate(windows[k]):
+        for s in windows[k]:
             s_padded[:,params['Delta']:(2*params['Delta'])] = s
+            hit = np.empty(theta_dim, dtype='int32')
             for l in range(params['L']):
                 t_min, t_max = params['Delta']-(l+1), 2*params['Delta']-(l+1)
                 s_lagged = s_padded[:,t_min:t_max]
-                hits[k][w_prev,w,:,:,l] = np.tensordot(s_lagged, s, axes = (1,1))
+                hit[:,:,l] = np.tensordot(s_lagged, s, axes = (1,1))
+            hits[k][-1].append(hit)
             
 # Define objective function, in this case, the negative log-likelihood
 def neg_log_likelihood(theta):
     theta = np.reshape(theta, theta_dim)
     h = [np.empty(n_w[0])]
     for w in range(n_w[0]):
-        h[0][w] = np.sum(theta * hits[0][w,:,:])
+        h[0][w] = np.sum(theta * hits[0][w])
     for k in range(1, params['M']):
         h.append(np.empty((n_w[k-1], n_w[k])))
         for w_prev in range(n_w[k-1]):
             for w in range(n_w[k]):
-                h[k][w_prev,w] = np.sum(theta * hits[k][w_prev,w,:,:])
+                h[k][w_prev,w] = np.sum(theta * hits[k][w_prev][w])
 
     b = [np.zeros(n_w[params['M']-1])]            
     for k in range(params['M']-1, 0, -1):
