@@ -13,6 +13,7 @@ from scipy.io import loadmat
 from utility import window_permutations, unlog
 
 # Parameters
+profile = True
 params = {'input_file': 'sample.mat',
           'L': 2,
           'Delta': 4}
@@ -163,4 +164,10 @@ def inference(params):
     print np.reshape(theta_opt, (params['N'], params['N'], params['L']))
 
 if __name__ == '__main__':
-    inference(params)
+    if profile:
+        import cProfile, pstats
+        cProfile.run('inference(params)', 'inference_prof')
+        p = pstats.Stats('inference_prof')
+        p.strip_dirs().sort_stats('time').print_stats(10)
+    else:
+        inference(params)
