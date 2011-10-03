@@ -15,11 +15,11 @@ from random import random
 from utility import log_weighted_sample, window_permutations
 
 # Parameters
-params = {'N': 5,
-          'T': 200,
+params = {'N': 3,
+          'T': 1000,
           'L': 2,
-          'Delta': 4,
-          'theta_method': ('sparse_unique', {'p': 0.8, 'scale': 3.0}),
+          'Delta': 5,
+          'theta_method': ('sparse_unique', {'p': 1.0, 'scale': 3.0}),
           # 'theta_method': ('cascade_2', {'strength': 8.0, 'decay': 0.8}),
           # 'S_method': ('random_uniform', {'p_min': 0.05, 'p_max': 0.2}),
           'S_method': ('random_periodic', {'baseline': 0.05, 'scale': 0.02})}
@@ -112,7 +112,8 @@ for k in range(1, params['M']):
     x[:,(k*params['Delta']):((k+1)*params['Delta'])] = windows[k][w_samp]
 
 # Write sample to file
-savemat('sample.mat', {'theta': theta, 'sample': np.array(x, dtype='float32')})
+savemat('sample.mat', {'theta': theta, 'sample': np.array(x, dtype='float32')},
+        oned_as = 'column')
 
 # Output
 print 'Parameters'
