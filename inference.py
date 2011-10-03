@@ -16,12 +16,12 @@ from utility import window_permutations, unlog
 profile = True
 params = {'input_file': 'sample.mat',
           'L': 2,
-          'Delta': 4}
+          'Delta': 5}
 
 def inference(params):
     # Read data from file
     input_data = loadmat(params['input_file'])
-    x = np.asarray(input_data['sample'], dtype='int8')
+    x = np.asarray(input_data['sample'], dtype=np.uint8)
     if 'theta' in input_data:
         theta_true = input_data['theta']
     else:
@@ -47,15 +47,17 @@ def inference(params):
     # Precompute statistics
     print 'Precomputing statistics'
     hits = [[]]
-    s_padded = np.zeros((params['N'],2*params['Delta']), dtype='bool')
+    hits_observed = np.zeros(theta_dim)
+    s_padded = np.zeros((params['N'],2*params['Delta']), dtype=np.bool)
     for s in windows[0]:
         s_padded[:,params['Delta']:(2*params['Delta'])] = s
-        hit = np.empty(theta_dim, dtype='int32')
+        hit = np.empty(theta_dim, dtype=np.uint32)
         for l in range(params['L']):
             t_min, t_max = params['Delta']-(l+1), 2*params['Delta']-(l+1)
             s_lagged = s_padded[:,t_min:t_max]
             hit[:,:,l] = np.tensordot(s_lagged, s, axes = (1,1))
         hits[0].append(hit)
+    hits_observed += hits[0][0]
     for k in range(1, params['M']):
         hits.append([])
         for s_prev in windows[k-1]:
@@ -63,12 +65,13 @@ def inference(params):
             s_padded[:,0:params['Delta']] = s_prev
             for s in windows[k]:
                 s_padded[:,params['Delta']:(2*params['Delta'])] = s
-                hit = np.empty(theta_dim, dtype='int32')
+                hit = np.empty(theta_dim, dtype=np.uint32)
                 for l in range(params['L']):
                     t_min, t_max = params['Delta']-(l+1), 2*params['Delta']-(l+1)
                     s_lagged = s_padded[:,t_min:t_max]
                     hit[:,:,l] = np.tensordot(s_lagged, s, axes = (1,1))
                 hits[k][-1].append(hit)
+        hits_observed += hits[k][0][0]
             
     # Define objective function, in this case, the negative log-likelihood
     def neg_log_likelihood(theta_vec):
@@ -119,20 +122,21 @@ def inference(params):
         b = [None] + b
         log_kappa = np.logaddexp.reduce(h[0] + b[1])
 
-        # Compute expected sufficient statistics
-        expect_theta = np.zeros(theta_dim)
+        # Compute expected statistics
         w_prob = unlog(h[0] + b[1])
-        expect_theta += np.average(np.array(hits[0]), weights=w_prob, axis=0)
+        hits_expected = np.average(np.array(hits[0]), weights=w_prob, axis=0)
         for k in range(1, params['M']):
             w_prob_new = np.zeros(n_w[k])
             for w_prev in range(n_w[k-1]):
-                w_prev_weight = unlog(h[k][w_prev,:] + b[k+1])
-                w_prob_new += w_prev_weight * w_prob[w_prev]
-                expect_theta += np.average(np.array(hits[k][w_prev]),
-                                           weights=w_prev_weight, axis=0)
+                w_weight = unlog(h[k][w_prev,:] + b[k+1])
+                w_prob_new += w_weight * w_prob[w_prev]
+                hits_expected += (w_prob[w_prev] *
+                                  np.average(np.array(hits[k][w_prev]),
+                                             weights=w_weight, axis=0))
             w_prob = w_prob_new
 
-        return np.reshape(expect_theta - theta, theta_vec.shape)
+        print hits_expected - hits_observed
+        return np.reshape(hits_expected - hits_observed, theta_vec.shape)
 
     # Callback for displaying state during optimization
     def show_theta(theta_vec):
@@ -148,7 +152,8 @@ def inference(params):
     theta_opt = opt.fmin_bfgs(f = neg_log_likelihood,
                               fprime = grad_neg_log_likelihood,
                               x0 = theta_init,
-                              callback=show_theta)
+                              callback = show_theta,
+                              gtol = 0.01)
 
     # Output
     print 'x'
