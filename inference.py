@@ -10,7 +10,7 @@ import numpy as np
 import scipy.optimize as opt
 from scipy.io import loadmat
 
-from utility import window_permutations, unlog
+from utility import window_permutations, unlog, fast_average, logaddexp
 
 # Parameters
 profile = True
@@ -90,7 +90,7 @@ def inference(params):
         for k in range(params['M']-1, 0, -1):
             b[k] = np.empty(n_w[k-1])
             for w_prev in range(n_w[k-1]):
-                b[k][w_prev] = np.logaddexp.reduce(h[k][w_prev] + b[k+1])
+                b[k][w_prev] = logaddexp(h[k][w_prev] + b[k+1])
 
         return h, b
 
@@ -100,7 +100,7 @@ def inference(params):
 
         h, b = dp(theta)
         
-        log_kappa = np.logaddexp.reduce(h[0] + b[1])
+        log_kappa = logaddexp(h[0] + b[1])
 
         nll = log_kappa
         nll -= h[0][0]
@@ -116,15 +116,15 @@ def inference(params):
 
         # Compute expected statistics
         w_prob = unlog(h[0] + b[1])
-        hits_expected = np.average(np.array(hits[0]), weights=w_prob, axis=0)
+        hits_expected = fast_average(np.array(hits[0]), w_prob)
         for k in range(1, params['M']):
             w_prob_new = np.zeros(n_w[k])
             for w_prev in range(n_w[k-1]):
                 w_weight = unlog(h[k][w_prev,:] + b[k+1])
                 w_prob_new += w_weight * w_prob[w_prev]
                 hits_expected += (w_prob[w_prev] *
-                                  np.average(np.array(hits[k][w_prev]),
-                                             weights=w_weight, axis=0))
+                                  fast_average(np.array(hits[k][w_prev]),
+                                               weights=w_weight))
             w_prob = w_prob_new
 
         return np.reshape(hits_expected - hits_observed, theta_vec.shape)
