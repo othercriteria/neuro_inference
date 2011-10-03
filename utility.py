@@ -24,6 +24,9 @@ def log_weighted_sample(log_probs):
         if r < p_cum: break
     return i
 
+def hash_array(x):
+    return hashlib.sha1(x.view(np.uint8)).hexdigest()
+
 def window_permutations(w):
     n = w.shape[1]
 
@@ -31,7 +34,7 @@ def window_permutations(w):
     w_seen = set()
     for perm in permutations(range(n)):
         w_perm = w[:,np.array(perm)]
-        w_hash = hashlib.sha1(w_perm.view(np.uint8)).hexdigest()
+        w_hash = hash_array(w_perm)
         if w_hash in w_seen: continue
         w_seen.add(w_hash)
         perms.append(w_perm)
