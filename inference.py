@@ -16,7 +16,7 @@ from utility import window_permutations, unlog
 profile = True
 params = {'input_file': 'sample.mat',
           'L': 2,
-          'Delta': 5}
+          'Delta': 4}
 
 def inference(params):
     # Read data from file
@@ -72,10 +72,11 @@ def inference(params):
                     hit[:,:,l] = np.tensordot(s_lagged, s, axes = (1,1))
                 hits[k][-1].append(hit)
         hits_observed += hits[k][0][0]
-            
+
     # Define objective function, in this case, the negative log-likelihood
     def neg_log_likelihood(theta_vec):
         theta = np.reshape(theta_vec, theta_dim)
+        
         h = [np.empty(n_w[0])]
         for w in range(n_w[0]):
             h[0][w] = np.sum(theta * hits[0][w])
@@ -85,13 +86,12 @@ def inference(params):
                 for w in range(n_w[k]):
                     h[k][w_prev,w] = np.sum(theta * hits[k][w_prev][w])
 
-        b = [np.zeros(n_w[params['M']-1])]            
+        b = [None] * (params['M']+1)
+        b[params['M']] = np.zeros(n_w[params['M']-1])
         for k in range(params['M']-1, 0, -1):
-            b = [np.empty(n_w[k-1])] + b
+            b[k] = np.empty(n_w[k-1])
             for w_prev in range(n_w[k-1]):
-                for w in range(n_w[k]):
-                    b[0][w_prev] = np.logaddexp.reduce(h[k][w_prev,:] + b[1])
-        b = [None] + b
+                b[k][w_prev] = np.logaddexp.reduce(h[k][w_prev] + b[k+1])
         log_kappa = np.logaddexp.reduce(h[0] + b[1])
 
         nll = log_kappa
@@ -99,7 +99,7 @@ def inference(params):
         for k in range(1, params['M']):
             nll -= h[k][0,0]
         return nll
-
+    
     # Define gradient of the objective function
     def grad_neg_log_likelihood(theta_vec):
         theta = np.reshape(theta_vec, theta_dim)
@@ -113,14 +113,12 @@ def inference(params):
                 for w in range(n_w[k]):
                     h[k][w_prev,w] = np.sum(theta * hits[k][w_prev][w])
 
-        b = [np.zeros(n_w[params['M']-1])]            
+        b = [None] * (params['M']+1)
+        b[params['M']] = np.zeros(n_w[params['M']-1])
         for k in range(params['M']-1, 0, -1):
-            b = [np.empty(n_w[k-1])] + b
+            b[k] = np.empty(n_w[k-1])
             for w_prev in range(n_w[k-1]):
-                for w in range(n_w[k]):
-                    b[0][w_prev] = np.logaddexp.reduce(h[k][w_prev,:] + b[1])
-        b = [None] + b
-        log_kappa = np.logaddexp.reduce(h[0] + b[1])
+                b[k][w_prev] = np.logaddexp.reduce(h[k][w_prev] + b[k+1])
 
         # Compute expected statistics
         w_prob = unlog(h[0] + b[1])
@@ -135,7 +133,6 @@ def inference(params):
                                              weights=w_weight, axis=0))
             w_prob = w_prob_new
 
-        print hits_expected - hits_observed
         return np.reshape(hits_expected - hits_observed, theta_vec.shape)
 
     # Callback for displaying state during optimization
@@ -152,8 +149,7 @@ def inference(params):
     theta_opt = opt.fmin_bfgs(f = neg_log_likelihood,
                               fprime = grad_neg_log_likelihood,
                               x0 = theta_init,
-                              callback = show_theta,
-                              gtol = 0.01)
+                              callback = show_theta)
 
     # Output
     print 'x'
