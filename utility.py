@@ -6,6 +6,10 @@ from random import random
 from itertools import permutations
 import hashlib
 
+def fast_average(x, weights):
+    weights = np.array(weights, copy = False, ndmin = x.ndim).swapaxes(-1, 0)
+    return np.multiply(x, weights).sum(axis = 0) / weights.sum(axis = 0)
+
 def unlog(log_x):
     log_x = np.array(log_x)
     log_x_scaled = log_x - np.max(log_x)
