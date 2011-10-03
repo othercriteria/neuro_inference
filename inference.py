@@ -73,15 +73,14 @@ def inference(params):
                 hits[k][-1].append(hit)
         hits_observed += hits[k][0][0]
 
-    # Define objective function, in this case, the negative log-likelihood
-    def neg_log_likelihood(theta_vec):
-        theta = np.reshape(theta_vec, theta_dim)
-        
-        h = [np.empty(n_w[0])]
+    # Common DP code used for likelihood and gradient calculations
+    def dp(theta):
+        h = [None] * params['M']
+        h[0] = np.empty(n_w[0])
         for w in range(n_w[0]):
             h[0][w] = np.sum(theta * hits[0][w])
         for k in range(1, params['M']):
-            h.append(np.empty((n_w[k-1], n_w[k])))
+            h[k] = np.empty((n_w[k-1], n_w[k]))
             for w_prev in range(n_w[k-1]):
                 for w in range(n_w[k]):
                     h[k][w_prev,w] = np.sum(theta * hits[k][w_prev][w])
@@ -92,6 +91,15 @@ def inference(params):
             b[k] = np.empty(n_w[k-1])
             for w_prev in range(n_w[k-1]):
                 b[k][w_prev] = np.logaddexp.reduce(h[k][w_prev] + b[k+1])
+
+        return h, b
+
+    # Define objective function, in this case, the negative log-likelihood
+    def neg_log_likelihood(theta_vec):
+        theta = np.reshape(theta_vec, theta_dim)
+
+        h, b = dp(theta)
+        
         log_kappa = np.logaddexp.reduce(h[0] + b[1])
 
         nll = log_kappa
@@ -104,21 +112,7 @@ def inference(params):
     def grad_neg_log_likelihood(theta_vec):
         theta = np.reshape(theta_vec, theta_dim)
 
-        h = [np.empty(n_w[0])]
-        for w in range(n_w[0]):
-            h[0][w] = np.sum(theta * hits[0][w])
-        for k in range(1, params['M']):
-            h.append(np.empty((n_w[k-1], n_w[k])))
-            for w_prev in range(n_w[k-1]):
-                for w in range(n_w[k]):
-                    h[k][w_prev,w] = np.sum(theta * hits[k][w_prev][w])
-
-        b = [None] * (params['M']+1)
-        b[params['M']] = np.zeros(n_w[params['M']-1])
-        for k in range(params['M']-1, 0, -1):
-            b[k] = np.empty(n_w[k-1])
-            for w_prev in range(n_w[k-1]):
-                b[k][w_prev] = np.logaddexp.reduce(h[k][w_prev] + b[k+1])
+        h, b = dp(theta)
 
         # Compute expected statistics
         w_prob = unlog(h[0] + b[1])
