@@ -48,5 +48,57 @@ def window_permutations(w):
 
     return perms
 
+def window_permutations_sparse(w):
+    return next_permutation(sorted(w))
 
+# Credit: http://blog.bjrn.se/2008/04/lexicographic-permutations-using.html
+# Removed unnecessary code as appropriate.
+def next_permutation(seq):
+    """Like C++ std::next_permutation() but implemented as
+    generator. Yields copies of seq."""
 
+    def reverse(seq, start, end):
+        # seq = seq[:start] + reversed(seq[start:end]) + \
+        #       seq[end:]
+        end -= 1
+        if end <= start:
+            return
+        while True:
+            seq[start], seq[end] = seq[end], seq[start]
+            if start == end or start+1 == end:
+                return
+            start += 1
+            end -= 1
+    
+    first = 0
+    last = len(seq)
+    seq = seq[:]
+
+    yield seq
+    
+    if last == 1:
+        raise StopIteration
+
+    while True:
+        next = last - 1
+
+        while True:
+            # Step 1.
+            next1 = next
+            next -= 1
+
+            if seq[next] < seq[next1]:
+                # Step 2.
+                mid = last - 1
+                while not seq[next] < seq[mid]:
+                    mid -= 1
+                seq[next], seq[mid] = seq[mid], seq[next]
+                
+                # Step 3.
+                reverse(seq, next1, last)
+
+                yield seq[:]
+                break
+            if next == first:
+                raise StopIteration
+    raise StopIteration
