@@ -48,7 +48,7 @@ def window_permutations(w):
 
     return perms
 
-def window_permutations_sparse(w):
+def permute(w):
     return next_permutation(sorted(w))
 
 # Credit: http://blog.bjrn.se/2008/04/lexicographic-permutations-using.html
