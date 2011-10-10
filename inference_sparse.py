@@ -11,16 +11,16 @@ import scipy.optimize as opt
 from scipy.io import loadmat
 from math import factorial
 
-from utility import unlog, fast_average, logaddexp, window_permutations
+from utility import unlog, fast_average, logaddexp, permute
 
 # Parameters
 profile = True
 params = {'input_file': 'EE188_Data.mat',
           'data_field': 'Data',
-          'max_T': 100,
-          'max_N': 20,
-          'L': 2,
-          'perm_max': 6}
+          'max_T': 5000,
+          'max_N': 5,
+          'L': 4,
+          'perm_max': 12}
 
 def inference(params):
     # Read data from file
@@ -46,18 +46,18 @@ def inference(params):
         if not i < params['N']: continue
         x_dict[t].append(i)
     for t in x_dict:
-        x_dict[t] = frozenset(x_dict[t])
+        x_dict[t] = tuple(sorted(x_dict[t]))
 
     # Define function for building window as needed
-    def make_window(t_start, t_end):
-        w = np.zeros((params['N'], (t_end - t_start)), dtype=np.bool)
-        for t in range(t_start, t_end):
-            for x in x_dict[t]:
-                w[x, t-t_start] = 1
+    def make_window(cols):
+        w = np.zeros((params['N'], len(cols)), dtype=np.bool)
+        for o, col in enumerate(cols):
+            for i in col:
+                w[i, o] = 1
         return w
    
     # Generate S (calling it "windows" in code)
-    print 'Generating window permutations'
+    print 'Counting window permutations'
     def n_perms(cols):
         n = 0
         denom = 1
@@ -72,17 +72,13 @@ def inference(params):
         t_end = t_start
         while t_end < params['T']:
             new_col = x_dict[t_end]
-            if t_end - t_start < params['L']:
-                t_end += 1
-                if not new_col in cols_seen:
-                    cols_seen[new_col] = 0
-                cols_seen[new_col] += 1
-                continue
-            # Try extending window
             t_end += 1
             if not new_col in cols_seen:
                 cols_seen[new_col] = 0
             cols_seen[new_col] += 1
+            if t_end - t_start <= params['L']:
+                n_perm = n_perms(cols_seen)
+                continue
             n_perm_new = n_perms(cols_seen)
             if n_perm_new > params['perm_max']:
                 t_end -= 1
@@ -102,7 +98,10 @@ def inference(params):
     hits = [np.empty((n_w[0],)+theta_dim)]
     hits_observed = np.zeros(theta_dim)
     s_padded = np.zeros((params['N'],params['L']+l_w[0]), dtype=np.bool)
-    for w, s in enumerate(window_permutations(make_window(*windows[0]))):
+    w_start, w_end = windows[0]
+    window = [x_dict[t] for t in range(w_start, w_end)]
+    for w, s in enumerate(permute(window)):
+        s = make_window(s)
         s_padded[:,params['L']:(params['L']+l_w[0])] = s
         for l in range(params['L']):
             tmin, tmax = params['L']-(l+1), (params['L']+l_w[0])-(l+1)
@@ -113,11 +112,15 @@ def inference(params):
     for k in range(1, params['M']):
         hits.append(np.empty((n_w[k-1],n_w[k])+theta_dim))
         s_padded = np.empty((params['N'],l_w[k-1]+l_w[k]), dtype=np.bool)
-        window_prev = window_permutations(make_window(*windows[k-1]))
-        window = window_permutations(make_window(*windows[k]))
-        for w_prev, s_prev in enumerate(window_prev):
+        w_prev_start, w_prev_end = windows[k-1]
+        w_start, w_end = windows[k]
+        window_prev = [x_dict[t] for t in range(w_prev_start, w_prev_end)]
+        window = [x_dict[t] for t in range(w_start, w_end)]
+        for w_prev, s_prev in enumerate(permute(window_prev)):
+            s_prev = make_window(s_prev)
             s_padded[:,0:l_w[k-1]] = s_prev
-            for w, s in enumerate(window):
+            for w, s in enumerate(permute(window)):
+                s = make_window(s)
                 s_padded[:,l_w[k-1]:(l_w[k-1]+l_w[k])] = s
                 for l in range(params['L']):
                     tmin, tmax = l_w[k-1]-(l+1), (l_w[k-1]+l_w[k])-(l+1)
@@ -199,7 +202,7 @@ def inference(params):
 
     # Output
     print 'x'
-    print x
+    print x_sparse
     print
 
     print 'Parameters'
