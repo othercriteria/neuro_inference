@@ -15,14 +15,14 @@ from random import random
 from utility import log_weighted_sample, window_permutations
 
 # Parameters
-params = {'N': 3,
-          'T': 1000,
+params = {'N': 5,
+          'T': 500000,
           'L': 2,
           'Delta': 5,
           'theta_method': ('sparse_unique', {'p': 1.0, 'scale': 3.0}),
           # 'theta_method': ('cascade_2', {'strength': 8.0, 'decay': 0.8}),
           # 'S_method': ('random_uniform', {'p_min': 0.05, 'p_max': 0.2}),
-          'S_method': ('random_periodic', {'baseline': 0.05, 'scale': 0.02})}
+          'S_method': ('random_periodic', {'baseline': 0.005, 'scale': 0.002})}
 if not params['T'] % params['Delta'] == 0:
     print 'Error: T must be a multiple of Delta'
     sys.exit()
@@ -53,8 +53,8 @@ if method_name in ['random_uniform', 'random_periodic']:
     for k in range(params['M']):
         window = []
         if method_name == 'random_uniform':
-            p = np.random.uniform(method_params['p_min'], method_params['p_max'])
-            w_raw = np.random.binomial(1, p, (params['N'], params['Delta']))
+            p = np.random.uniform(method_params['p_min'],method_params['p_max'])
+            w_raw = np.random.binomial(1, p, (params['N'],params['Delta']))
         if method_name == 'random_periodic':
             w_raw = np.empty((params['N'], params['Delta']))
             for i in range(params['N']):
@@ -65,8 +65,7 @@ if method_name in ['random_uniform', 'random_periodic']:
         windows.append(window_permutations(w))
 n_w = map(len, windows)
 
-# Tabulate log-potential functions: h_1, h_2, ..., h_M (this has the
-# feel of the forward algorithm?)
+# Tabulate log-potential functions: h_1, h_2, ..., h_M
 print 'Tabulating log-potential functions'
 h = [np.empty(n_w[0])]
 s_padded = np.zeros((params['N'],2*params['Delta']), dtype='uint8')
@@ -75,8 +74,8 @@ for w, s in enumerate(windows[0]):
     s_padded[:,params['Delta']:(2*params['Delta'])] = s
     hits[:,:,:] = 0
     for l in range(params['L']):
-        t_min, t_max = params['Delta'] - (l+1), 2*params['Delta'] - (l+1)
-        s_lagged = s_padded[:,t_min:t_max]
+        tmin, tmax = params['Delta'] - (l+1), 2*params['Delta'] - (l+1)
+        s_lagged = s_padded[:,tmin:tmax]
         hits[:,:,l] = np.tensordot(s_lagged, s, axes = (1,1))
     h[0][w] = np.sum(theta * hits)
 for k in range(1, params['M']):
@@ -87,8 +86,8 @@ for k in range(1, params['M']):
             s_padded[:,params['Delta']:(2*params['Delta'])] = s
             hits[:,:,:] = 0
             for l in range(params['L']):
-                t_min, t_max = params['Delta'] - (l+1), 2*params['Delta'] - (l+1)
-                s_lagged = s_padded[:,t_min:t_max]
+                tmin, tmax = params['Delta'] - (l+1), 2*params['Delta'] - (l+1)
+                s_lagged = s_padded[:,tmin:tmax]
                 hits[:,:,l] = np.tensordot(s_lagged, s, axes = (1,1))
             h[k][w_prev,w] = np.sum(theta * hits)
 
