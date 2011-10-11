@@ -18,9 +18,10 @@ profile = True
 params = {'input_file': 'EE188_Data.mat',
           'data_field': 'Data',
           'max_T': 5000,
-          'max_N': 5,
+          'max_N': 10,
           'L': 4,
-          'perm_max': 12}
+          'perm_max': 12,
+          'lambda': 0.05}
 
 def inference(params):
     # Read data from file
@@ -162,6 +163,7 @@ def inference(params):
         nll -= h[0][0]
         for k in range(1, params['M']):
             nll -= h[k][0,0]
+        nll += params['lambda'] * np.sum(np.abs(theta))
         return nll
     
     # Define gradient of the objective function
@@ -182,13 +184,16 @@ def inference(params):
                                   fast_average(hits[k][w_prev], w_weight))
             w_prob = w_prob_new
 
-        return np.reshape(hits_expected - hits_observed, theta_vec.shape)
+        # Adjust gradient for L1 regularization
+        reg = params['lambda'] * np.sign(theta)
+        
+        return np.reshape(hits_expected - hits_observed + reg, theta_vec.shape)
 
     # Callback for displaying state during optimization
     def show_theta(theta_vec):
         theta = np.reshape(theta_vec, (params['N'], params['N'], params['L']))
         if theta_true is None:
-            print theta
+            print np.round(theta, decimals = 2)
         else:
             diff = np.reshape(theta - theta_true, theta_vec.shape)
             print np.sqrt(np.dot(diff, diff))
