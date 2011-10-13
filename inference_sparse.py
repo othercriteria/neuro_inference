@@ -17,11 +17,12 @@ from utility import unlog, fast_average, logaddexp, permute
 profile = True
 params = {'input_file': 'EE188_Data.mat',
           'data_field': 'Data',
-          'max_T': 5000,
+          'max_T': 2000,
           'max_N': 10,
           'L': 4,
           'perm_max': 12,
-          'lambda': 0.05}
+          'lambda': 0.01,
+          'opt_params': {'gtol': 0.01}}
 
 def inference(params):
     # Read data from file
@@ -205,7 +206,8 @@ def inference(params):
     theta_opt = opt.fmin_bfgs(f = neg_log_likelihood,
                               fprime = grad_neg_log_likelihood,
                               x0 = theta_init,
-                              callback = show_theta)
+                              callback = show_theta,
+                              **(params['opt_params']))
 
     # Output
     print 'x'
