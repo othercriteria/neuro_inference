@@ -11,7 +11,7 @@ import scipy.optimize as opt
 from scipy.io import loadmat
 from math import factorial
 
-from utility import unlog, fast_average, logaddexp, permute
+from utility import unlog, fast_average, logaddexp, permute, theta_viz
 
 # Parameters
 profile = True
@@ -22,7 +22,8 @@ params = {'input_file': 'EE188_Data.mat',
           'L': 4,
           'perm_max': 12,
           'lambda': 0.01,
-          'opt_params': {'gtol': 0.01}}
+          'opt_params': {'gtol': 0.01},
+          'intermediate_viz': True}
 
 def inference(params):
     # Read data from file
@@ -200,6 +201,8 @@ def inference(params):
         else:
             diff = np.reshape(theta - theta_true, theta_vec.shape)
             print np.sqrt(np.dot(diff, diff))
+        if params['intermediate_viz']:
+            theta_viz(theta)
 
     # Do optimization
     print 'Starting optimization'
