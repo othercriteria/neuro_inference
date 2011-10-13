@@ -5,6 +5,7 @@ import numpy as np
 from random import random
 from itertools import permutations
 import hashlib
+from os import system
 
 def logaddexp(x):
     return np.logaddexp.reduce(x)
@@ -102,3 +103,16 @@ def next_permutation(seq):
             if next == first:
                 raise StopIteration
     raise StopIteration
+
+def theta_viz(theta, threshold = 0.01):
+    outfile = open('theta_viz.dot', 'w')
+    outfile.write('digraph G {\n')
+    theta_n, theta_l = theta.shape[0], theta.shape[2]
+    for i in range(theta_n):
+        for j in range(theta_n):
+            for l in range(theta_l):
+                if abs(theta[i,j,l]) < threshold: continue
+                outfile.write('%d -> %d\n' % (i, j))
+    outfile.write('}\n')
+    outfile.close()
+    system('neato -Tpng theta_viz.dot -o theta_viz.png')
