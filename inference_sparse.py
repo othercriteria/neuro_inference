@@ -101,15 +101,16 @@ def inference(params):
     s_padded = np.zeros((params['N'],params['L']+l_w[0]), dtype=np.bool)
     w_start, w_end = windows[0]
     window = [x_dict[t] for t in range(w_start, w_end)]
-    for w, s in enumerate(permute(window)):
-        s = make_window(s)
+    for w, z in enumerate(permute(window)):
+        s = make_window(z)
         s_padded[:,params['L']:(params['L']+l_w[0])] = s
         for l in range(params['L']):
             tmin, tmax = params['L']-(l+1), (params['L']+l_w[0])-(l+1)
             s_lagged = s_padded[:,tmin:tmax]
             hit = np.tensordot(s_lagged, s, axes = (1,1))
             hits[0][w,:,:,l] = hit
-    hits_observed += hits[0][0]
+        if z == window:
+            hits_observed += hits[0][w]
     for k in range(1, params['M']):
         hits.append(np.empty((n_w[k-1],n_w[k])+theta_dim))
         s_padded = np.empty((params['N'],l_w[k-1]+l_w[k]), dtype=np.bool)
@@ -117,18 +118,19 @@ def inference(params):
         w_start, w_end = windows[k]
         window_prev = [x_dict[t] for t in range(w_prev_start, w_prev_end)]
         window = [x_dict[t] for t in range(w_start, w_end)]
-        for w_prev, s_prev in enumerate(permute(window_prev)):
-            s_prev = make_window(s_prev)
+        for w_prev, z_prev in enumerate(permute(window_prev)):
+            s_prev = make_window(z_prev)
             s_padded[:,0:l_w[k-1]] = s_prev
-            for w, s in enumerate(permute(window)):
-                s = make_window(s)
+            for w, z in enumerate(permute(window)):
+                s = make_window(z)
                 s_padded[:,l_w[k-1]:(l_w[k-1]+l_w[k])] = s
                 for l in range(params['L']):
                     tmin, tmax = l_w[k-1]-(l+1), (l_w[k-1]+l_w[k])-(l+1)
                     s_lagged = s_padded[:,tmin:tmax]
                     hit = np.tensordot(s_lagged, s, axes = (1,1))
                     hits[k][w_prev,w,:,:,l] = hit
-        hits_observed += hits[k][0,0]
+                if z_prev == window_prev and z == window:
+                    hits_observed += hits[k][w_prev,w]
 
     # Common DP code used for likelihood and gradient calculations
     def dp(theta):
