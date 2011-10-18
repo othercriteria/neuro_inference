@@ -18,10 +18,10 @@ from utility import theta_viz
 profile = True
 params = {'input_file': 'EE188_Data.mat',
           'data_field': 'Data',
-          'max_T': 25000,
-          'max_N': 5,
+          'max_T': 100000,
+          'max_N': 10,
           'L': 2,
-          'perm_max': 4,
+          'perm_max': 2,
           'num_samples': 50,
           'stopping_z': 1.5,
           'lambda': 0.1,
@@ -64,6 +64,14 @@ def inference(params):
     # Generate S (calling it "windows" in code)
     print 'Counting window permutations'
     n_perms_memo = {}
+    fact_memo = {}
+    def fact(n):
+        if n in fact_memo:
+            return fact_memo[n]
+        else:
+            val = factorial(n)
+            fact_memo[n] = val
+            return val
     def n_perms(cols):
         n = 0
         denoms = []
@@ -74,9 +82,9 @@ def inference(params):
         if key in n_perms_memo:
             return n_perms_memo[key]
         else:
-            val = factorial(n)
+            val = fact(n)
             for denom in denoms:
-                val /= factorial(denom)
+                val /= fact(denom)
             n_perms_memo[key] = val
             return val
     windows, n_w, l_w = [], [], []
@@ -242,13 +250,20 @@ def inference(params):
         # Sample at current theta
         h, b = dp(theta)
         hits_sample = np.zeros((params['num_samples'],)+theta_dim)
+        w_samps = log_weighted_sample(h[0] + b[1], params['num_samples'])
         for rep in range(params['num_samples']):
-            w_samp = log_weighted_sample(h[0] + b[1])
-            hits_sample[rep] += hits_pre[0][w_samp]
-            for k in range(1, params['M']):
-                w_samp_next = log_weighted_sample(h[k][w_samp,:] + b[k+1])
-                hits_sample[rep] += hits_pre[k][w_samp,w_samp_next]
-                w_samp = w_samp_next
+            hits_sample[rep] += hits_pre[0][w_samps[rep]]
+        for k in range(1, params['M']):
+            w_samps_next = []
+            w_samps_next_uniques = []
+            w_samps_uniques, inds = np.unique(w_samps, return_inverse=True)
+            for i, w in enumerate(w_samps_uniques):
+                n = len(inds[inds == i])
+                w_samps_next_uniques.append(log_weighted_sample(h[k][w]+b[k+1],n))
+            for rep in range(params['num_samples']):
+                w_samps_next.append(w_samps_next_uniques[inds[rep]].pop())
+                hits_sample[rep] += hits_pre[k][w_samps[rep],w_samps_next[rep]]
+            w_samps = w_samps_next
 
         # Find component with largest z-score
         hits_expected = expected_statistics(h, b)
