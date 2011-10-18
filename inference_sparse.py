@@ -17,11 +17,11 @@ from utility import unlog, fast_average, logaddexp, permute, theta_viz
 profile = True
 params = {'input_file': 'EE188_Data.mat',
           'data_field': 'Data',
-          'max_T': 2000,
-          'max_N': 10,
+          'max_T': 250000,
+          'max_N': 25,
           'L': 4,
-          'perm_max': 12,
-          'lambda': 0.01,
+          'perm_max': 4,
+          'lambda': 0.1,
           'opt_params': {'gtol': 0.01},
           'intermediate_viz': True}
 
@@ -45,8 +45,7 @@ def inference(params):
     for t in range(params['T']):
         x_dict[t] = []
     for t, i in x_sparse:
-        if not t < params['T']: continue
-        if not i < params['N']: continue
+        if not (t < params['T'] and i < params['N']): continue
         x_dict[t].append(i)
     for t in x_dict:
         x_dict[t] = tuple(sorted(x_dict[t]))
@@ -133,6 +132,7 @@ def inference(params):
                     hits[k][w_prev,w,:,:,l] = hit
                 if z_prev == window_prev and z == window:
                     hits_observed += hits[k][w_prev,w]
+    del x_dict
 
     # Common DP code used for likelihood and gradient calculations
     def dp(theta):
