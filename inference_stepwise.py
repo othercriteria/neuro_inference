@@ -16,13 +16,15 @@ from utility import theta_viz
 
 # Parameters
 profile = True
-params = {'input_file': 'EE188_Data.mat',
+params = {'input_file': 'EE188_Data_reordered.mat',
           'data_field': 'Data',
-          'max_T': 100000,
-          'max_N': 10,
+          'label_field': 'cellID',
+          'theta_field': 'theta',
+          'max_T': 10000,
+          'max_N': 5,
           'L': 2,
           'perm_max': 2,
-          'num_samples': 50,
+          'num_samples': 100,
           'stopping_z': 1.5,
           'lambda': 0.1,
           'opt_params': {'gtol': 0.1, 'maxiter': 5},
@@ -32,10 +34,11 @@ def inference(params):
     # Read data from file
     input_data = loadmat(params['input_file'])
     x_sparse = np.asarray(input_data[params['data_field']], dtype=np.uint32)
-    if 'theta' in input_data:
-        theta_true = input_data['theta']
-    else:
-        theta_true = None
+    labels, theta_true = None, None
+    if params['label_field'] in input_data:
+        labels = input_data[params['label_field']][:,0]
+    if params['theta_field'] in input_data:
+        theta_true = input_data[params['theta_field']]
     params['N'], params['T'] = np.max(x_sparse[:,1]), np.max(x_sparse[:,0])
     params['T'] = min(params['T'], params['max_T'])
     params['N'] = min(params['N'], params['max_N'])
@@ -245,7 +248,7 @@ def inference(params):
     while True:
         # Visualize current theta
         if params['intermediate_viz']:
-            theta_viz(theta_dense(theta))
+            theta_viz(theta_dense(theta), labels = labels)
 
         # Sample at current theta
         h, b = dp(theta)
