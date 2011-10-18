@@ -2,7 +2,6 @@
 # Daniel Klein, 9/20/2011
 
 import numpy as np
-from random import random
 from itertools import permutations
 import hashlib
 from os import system
@@ -15,22 +14,33 @@ def fast_average(x, weights):
     return np.multiply(x, weights).sum(axis = 0) / weights.sum(axis = 0)
 
 def unlog(log_x):
-    log_x = np.array(log_x)
     log_x_scaled = log_x - np.max(log_x)
     x_unnorm = np.exp(log_x_scaled)
     x = x_unnorm / np.sum(x_unnorm)
     return x
 
 # (Log-)weighted sampling, with no optimization for repeated use
-def log_weighted_sample(log_probs):
+def log_weighted_sample(log_probs, n = None):
     probs = unlog(log_probs)
 
-    r = random()
-    p_cum = 0.0
-    for i, p in enumerate(probs):
-        p_cum += p
-        if r < p_cum: break
-    return i
+    if not n:
+        r = np.random.random()
+        p_cum = 0.0
+        for i, p in enumerate(probs):
+            p_cum += p
+            if r < p_cum: break
+        return i
+    else:
+        r = np.random.random(n)
+        probs = sorted(zip(probs, range(len(probs))), reverse = True)
+        samples = []
+        for rep in range(n):
+            p_cum = 0.0
+            for p, i in probs:
+                p_cum += p
+                if r[rep] < p_cum: break
+            samples.append(i)
+        return samples
 
 def hash_array(x):
     return hashlib.sha1(x.view(np.uint8)).hexdigest()
