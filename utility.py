@@ -121,15 +121,15 @@ def theta_viz(theta, threshold = 0.1, labels = None):
     outfile.write('overlap=false\n')
     theta_n, theta_l = theta.shape[0], theta.shape[2]
     for i in range(theta_n):
-        if labels:
-            i_str = labels[i]
-        else:
+        if labels is None:
             i_str = str(i)
+        else:
+            i_str = labels[i]
         for j in range(theta_n):
-            if labels:
-                j_str = labels[j]
-            else:
+            if labels is None:
                 j_str = str(j)
+            else:
+                j_str = labels[j]
             for l in range(theta_l):
                 if abs(theta[i,j,l]) < threshold: continue
                 type = (theta[i,j,l] > 0) and 'normal' or 'tee'
