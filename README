@@ -2,4 +2,4 @@ Sketching an implementation in Python. Also working on test cases, visualization
 
 Performance is not currently optimized.
 
-Requirements: Python with Numpy and Scipy libraries.
+Requirements: Python with Numpy and Scipy libraries. Visualization requires GraphViz (in particular, the Neato engine) with a Unix-y setup.
