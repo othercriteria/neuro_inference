@@ -7,11 +7,12 @@
 
 import sys
 import numpy as np
-import scipy.optimize as opt
+import numpy.linalg as la
 from scipy.io import loadmat
+from scipy.maxentropy import logsumexp
 from math import factorial
 
-from utility import unlog, fast_average, logaddexp, permute, log_weighted_sample
+from utility import unlog, fast_average, permute, log_weighted_sample
 from utility import theta_viz
 
 # Parameters
@@ -20,14 +21,16 @@ params = {'input_file': 'EE188_Data_reordered.mat',
           'data_field': 'Data',
           'label_field': 'cellID',
           'theta_field': 'theta',
-          'max_T': 10000,
-          'max_N': 5,
+          'max_T': 6000000,
+          'max_N': 2,
           'L': 2,
-          'perm_max': 2,
-          'num_samples': 100,
+          'Delta': 2,
+          'num_samples': 20,
+          'stopping_global': 0.1,
           'stopping_z': 1.5,
-          'lambda': 0.1,
-          'opt_params': {'gtol': 0.1, 'maxiter': 5},
+          'step_size': 0.1,
+          'opt_tol': 0.1,
+          'lambda': 0.05,
           'intermediate_viz': True}
 
 def inference(params):
@@ -42,6 +45,8 @@ def inference(params):
     params['N'], params['T'] = np.max(x_sparse[:,1]), np.max(x_sparse[:,0])
     params['T'] = min(params['T'], params['max_T'])
     params['N'] = min(params['N'], params['max_N'])
+    params['M'] = int(np.ceil(1.0 * params['T'] / params['Delta']))
+    params['T'] = params['Delta'] * params['M']
     x_sparse -= 1
     theta_dim = (params['N'],params['N'],params['L'])
 
@@ -91,29 +96,19 @@ def inference(params):
             n_perms_memo[key] = val
             return val
     windows, n_w, l_w = [], [], []
-    t_start = 0
-    while t_start < params['T']:
+    for k in range(params['M']):
+        t_start = k * params['Delta']
+        t_end = min(params['T'], (k+1) * params['Delta'])
         cols_seen = {}
-        t_end = t_start
-        while t_end < params['T']:
-            new_col = x_dict[t_end]
-            t_end += 1
+        for t in range(t_start, t_end):
+            new_col = x_dict[t]
             if not new_col in cols_seen:
                 cols_seen[new_col] = 0
             cols_seen[new_col] += 1
-            if t_end - t_start <= params['L']:
-                n_perm = n_perms(cols_seen)
-                continue
-            n_perm_new = n_perms(cols_seen)
-            if n_perm_new > params['perm_max']:
-                t_end -= 1
-                break
-            n_perm = n_perm_new
+            n_perm = n_perms(cols_seen)
         windows.append((t_start, t_end))
         n_w.append(n_perm)
         l_w.append(t_end - t_start)
-        t_start = t_end
-    params['M'] = len(n_w)
 
     # Initialize theta (using sparse representation)
     theta = {}
@@ -139,7 +134,7 @@ def inference(params):
     print 'Precomputing statistics'
     hits_pre = [np.empty((n_w[0],)+theta_dim)]
     hits_observed = np.zeros(theta_dim)
-    s_padded = np.zeros((params['N'],params['L']+l_w[0]), dtype=np.bool)
+    s_padded = np.zeros((params['N'],params['L']+l_w[0]), dtype=np.uint32)
     w_start, w_end = windows[0]
     window = [x_dict[t] for t in range(w_start, w_end)]
     for w, z in enumerate(permute(window)):
@@ -154,7 +149,7 @@ def inference(params):
             hits_observed += hits_pre[0][w]
     for k in range(1, params['M']):
         hits_pre.append(np.empty((n_w[k-1],n_w[k])+theta_dim))
-        s_padded = np.empty((params['N'],l_w[k-1]+l_w[k]), dtype=np.bool)
+        s_padded = np.empty((params['N'],l_w[k-1]+l_w[k]), dtype=np.uint32)
         w_prev_start, w_prev_end = windows[k-1]
         w_start, w_end = windows[k]
         window_prev = [x_dict[t] for t in range(w_prev_start, w_prev_end)]
@@ -177,7 +172,7 @@ def inference(params):
     # Common DP code used for likelihood and gradient calculations
     def dp(theta_sparse):
         theta = theta_dense(theta_sparse)
-        
+
         h = [None] * params['M']
         h[0] = np.empty(n_w[0])
         for w in range(n_w[0]):
@@ -193,22 +188,25 @@ def inference(params):
         for k in range(params['M']-1, 0, -1):
             b[k] = np.empty(n_w[k-1])
             for w_prev in range(n_w[k-1]):
-                b[k][w_prev] = logaddexp(h[k][w_prev] + b[k+1])
+                b[k][w_prev] = logsumexp(h[k][w_prev] + b[k+1])
 
         return h, b
 
     # Define objective function, in this case, the negative log-likelihood
-    def neg_log_likelihood(theta_vec, inds):
-        theta_sparse = theta_from_arrays(inds, theta_vec)
-        h, b = dp(theta_sparse)
+    def neg_log_likelihood(theta_sparse, hb = None):
+        if not hb is None:
+            h, b = hb
+        else:
+            h, b = dp(theta_sparse)
         
-        log_kappa = logaddexp(h[0] + b[1])
+        log_kappa = logsumexp(h[0] + b[1])
 
         nll = log_kappa
         nll -= h[0][0]
         for k in range(1, params['M']):
             nll -= h[k][0,0]
-        nll += params['lambda'] * np.sum(np.abs(theta_vec))
+        for ind in theta_sparse:
+            nll += params['lambda'] * np.abs(theta_sparse[ind])
         return nll
 
     # Compute expected statistics
@@ -224,34 +222,38 @@ def inference(params):
                                   fast_average(hits_pre[k][w_prev], w_weight))
             w_prob = w_prob_new
         return hits_expected
-    
+            
     # Define gradient of the objective function
-    def grad_neg_log_likelihood(theta_vec, inds):
-        theta_sparse = theta_from_arrays(inds, theta_vec)
-        h, b = dp(theta_sparse)
+    def grad_neg_log_likelihood(theta_sparse, hb = None):
+        if not hb is None:
+            h, b = hb
+        else:
+            h, b = dp(theta_sparse)
         
         hits_expected = expected_statistics(h, b)
         grad_full = hits_expected - hits_observed
         
-        grad_sparse = []
-        for ind in inds:
-            grad_sparse.append(grad_full[ind])
-        grad_sparse = np.array(grad_sparse)
+        grad_sparse = {}
+        for ind in theta_sparse:
+            grad_sparse[ind] = grad_full[ind]
 
         # Adjust gradient for L1 regularization
-        grad_sparse += params['lambda'] * np.sign(theta_vec)
+        for ind in theta_sparse:
+            grad_sparse[ind] += params['lambda'] * np.sign(theta_sparse[ind])
         
         return grad_sparse
 
     # Do optimization
     print 'Starting stepwise optimization'
+    h, b = dp(theta)
+    nll = neg_log_likelihood(theta, (h, b))
+    print 'Initial negative log-likelihood: %.2f' % nll
     while True:
-        # Visualize current theta
+        # Assess model at current theta
         if params['intermediate_viz']:
             theta_viz(theta_dense(theta), labels = labels)
 
         # Sample at current theta
-        h, b = dp(theta)
         hits_sample = np.zeros((params['num_samples'],)+theta_dim)
         w_samps = log_weighted_sample(h[0] + b[1], params['num_samples'])
         for rep in range(params['num_samples']):
@@ -265,11 +267,21 @@ def inference(params):
                 w_samps_next_uniques.append(log_weighted_sample(h[k][w]+b[k+1],n))
             for rep in range(params['num_samples']):
                 w_samps_next.append(w_samps_next_uniques[inds[rep]].pop())
-                hits_sample[rep] += hits_pre[k][w_samps[rep],w_samps_next[rep]]
+                hits_sample[rep] += hits_pre[k][w_samps[rep]][w_samps_next[rep]]
             w_samps = w_samps_next
 
-        # Find component with largest z-score
+        # Check global goodness-of-fit
         hits_expected = expected_statistics(h, b)
+        hits_norms = np.array([la.norm(hits - hits_expected)
+                                for hits in hits_sample])
+        ext = np.where(la.norm(hits_observed - hits_expected) > hits_norms)[0]
+        score = 1.0 * len(ext) / params['num_samples']
+        print 'Global score: %.2f' % score
+        if score < params['stopping_global']:
+            print 'Global goodness-of-fit criterion achieved'
+            break
+
+        # Find component with largest z-score
         hits_sd = np.sqrt(np.mean((hits_sample-hits_expected)**2, axis=0))
         z_scores = (hits_observed - hits_expected) / hits_sd
         z_scores[hits_sd == 0] = 0
@@ -282,14 +294,31 @@ def inference(params):
         print 'New component: %s (z = %.2f)' % (str(argmax_z), z_scores[argmax_z])
         theta[argmax_z] = 0.0
 
+        # Make big steps in direction of new theta component
+        grad = grad_neg_log_likelihood(theta, (h, b))
+        dir_new = -np.sign(grad[argmax_z])
+        while True:
+            print 'Making big step'
+            old_nll = nll
+            theta[argmax_z] += dir_new * params['step_size']
+            h, b = dp(theta)
+            nll = neg_log_likelihood(theta, (h, b))
+            print 'Negative log-likelihood: %.2f' % nll
+            if nll > old_nll or abs(nll - old_nll) < params['opt_tol']: break
+
         # Refit theta with new non-zero component
-        inds, theta_init = arrays_from_theta(theta)
-        theta_opt = opt.fmin_bfgs(f = neg_log_likelihood,
-                                  #fprime = grad_neg_log_likelihood,
-                                  x0 = theta_init,
-                                  args = (inds,),
-                                  **(params['opt_params']))
-        theta = theta_from_arrays(inds, theta_opt)
+        print 'Optimization by gradient descent'
+
+        while True:
+            old_nll = nll
+            grad = grad_neg_log_likelihood(theta, (h, b))
+            grad_norm = max(la.norm(np.array(grad.values())), 1.0)
+            for ind in grad:
+                theta[ind] -= (params['step_size'] / grad_norm) * grad[ind]
+            h, b = dp(theta)
+            nll = neg_log_likelihood(theta, (h, b))
+            print 'Negative log-likelihood: %.2f' % nll
+            if nll > old_nll: break
 
     # Output
     print 'x'

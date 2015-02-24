@@ -137,4 +137,4 @@ def theta_viz(theta, threshold = 0.1, labels = None):
                 outfile.write('%s -> %s [%s];\n' % (i_str, j_str, flavor))
     outfile.write('}\n')
     outfile.close()
-    system('neato -Tpng theta_viz.dot -o theta_viz.png')
+    system('neato -Tps theta_viz.dot -o theta_viz.ps')
